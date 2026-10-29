@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visa Checklist Generator | SpherePass</title>
+<style>
+  :root { --brand:#0b5cad; --bg:#f5f7fb; --card:#fff; --text:#1d2433; --muted:#5b6475; --line:#e3e7ef; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  header { background:var(--brand); color:#fff; padding:20px 16px; text-align:center; }
+  header h1 { margin:0; font-size:1.5rem; }
+  header p { margin:6px 0 0; opacity:.9; font-size:.95rem; }
+  main { max-width:760px; margin:0 auto; padding:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  label { display:block; font-weight:600; margin:0 0 6px; }
+  select { width:100%; padding:10px; font-size:1rem; border:1px solid var(--line); border-radius:8px; margin-bottom:14px; background:#fff; }
+  button { padding:10px 14px; font-size:.95rem; border:0; border-radius:8px; cursor:pointer; }
+  .primary { background:var(--brand); color:#fff; width:100%; font-weight:600; }
+  .actions { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+  .actions button { background:#eef3fa; color:var(--brand); font-weight:600; }
+  h2 { font-size:1.15rem; margin:0 0 4px; }
+  h3 { font-size:1rem; margin:18px 0 8px; color:var(--brand); }
+  .note { color:var(--muted); font-size:.9rem; margin:0; }
+  ul { padding-left:0; list-style:none; margin:0; }
+  li { padding:7px 0; border-bottom:1px dashed var(--line); }
+  li label { font-weight:400; display:flex; gap:8px; margin:0; cursor:pointer; }
+  .warn { background:#fff7e6; border:1px solid #f3d39b; color:#7a5300; padding:10px; border-radius:8px; font-size:.88rem; }
+  footer { text-align:center; color:var(--muted); font-size:.85rem; padding:20px 16px 32px; }
+  #result { display:none; }
+  @media print { header, #form, .actions, footer { display:none; } .card { border:0; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Visa Checklist Generator</h1>
+  <p>Document checklists for Indian passport holders, by SpherePass</p>
+</header>
+<main>
+  <div class="card" id="form">
+    <label for="country">Destination</label>
+    <select id="country"></select>
+    <label for="profile">Applicant type</label>
+    <select id="profile"></select>
+    <button class="primary" onclick="generate()">Generate checklist</button>
+  </div>
+
+  <div class="card" id="result">
+    <h2 id="title"></h2>
+    <p class="note" id="subtitle"></p>
+    <div id="lists"></div>
+    <div class="actions">
+      <button onclick="copyText()">Copy for WhatsApp</button>
+      <button onclick="window.print()">Print</button>
+    </div>
+    <p class="warn" style="margin-top:14px">Requirements change often. Always confirm with the official embassy / VFS website before submission. Additional documents may be requested case by case.</p>
+  </div>
+</main>
+<footer>SpherePass: visa processing &amp; QC support for travel agents, Lucknow &amp; Kanpur</footer>
+
+<script>
+var COMMON = [
+  "Original passport (valid 6+ months beyond return date, with at least 2 blank pages)",
+  "Copies of all previous passports and visas (if any)",
+  "Cover letter addressed to the embassy (purpose, dates, who pays)",
+  "Day-wise travel itinerary",
+  "Return flight reservation",
+  "Hotel bookings / invitation letter with host address proof",
+  "Personal bank statements, last 6 months (bank stamped or e-statement)",
+  "Income Tax Returns (ITR-V), last 3 years",
+  "Aadhaar card and PAN card copies"
+];
+
+var COUNTRIES = {
+  uk: { name:"United Kingdom", visa:"Standard Visitor visa", docs:[
+    "Online application submitted on GOV.UK and fee paid",
+    "VFS appointment confirmation (biometrics; photo is taken at VFS)",
+    "Proof of funds covering the full trip cost",
+    "Proof of ties to India (job, business, property, family)"
+  ]},
+  schengen: { name:"Schengen", visa:"Short-stay (Type C) visa", docs:[
+    "Signed Schengen visa application form",
+    "2 photos, 35x45 mm, white background",
+    "Passport issued within last 10 years, valid 3+ months after leaving Schengen",
+    "Travel medical insurance, minimum EUR 30,000, valid for all Schengen states",
+    "VFS / BLS appointment confirmation (biometrics)",
+    "Apply to the country of main stay (or first entry if stays are equal)"
+  ]},
+  australia: { name:"Australia", visa:"Visitor visa (Subclass 600)", docs:[
+    "Online application via ImmiAccount and fee paid",
+    "Colour scan of passport bio page",
+    "Recent passport-size photo",
+    "Biometrics at VFS (when requested)",
+    "Health examination (if requested by the department)"
+  ]},
+  nz: { name:"New Zealand", visa:"Visitor visa", docs:[
+    "Online application via Immigration New Zealand and fee paid",
+    "Digital photo meeting INZ photo requirements",
+    "Proof of funds (approx. NZD 1,000 per month of stay, or sponsor/prepaid accommodation)",
+    "Onward / return ticket",
+    "Medical or chest X-ray certificate (if required for length of stay)"
+  ]},
+  singapore: { name:"Singapore", visa:"Tourist visa (e-Visa via authorised agent)", docs:[
+    "Form 14A, completed and signed",
+    "Photo, 35x45 mm, white background, matte finish",
+    "Passport bio page copy",
+    "Form V39A / local sponsor (only if requested)"
+  ]},
+  japan: { name:"Japan", visa:"Temporary visitor (tourism) visa", docs:[
+    "Visa application form, signed",
+    "Photo, 45x45 mm, white background",
+    "Schedule of stay (day-wise itinerary in embassy format)",
+    "Submission via VFS / accredited agency"
+  ]}
+};
+
+var PROFILES = {
+  salaried: { name:"Salaried", docs:[
+    "Salary slips, last 3 months",
+    "Employment / NOC letter on company letterhead (designation, salary, joining date, approved leave)",
+    "Form 16, latest year",
+    "Office ID card copy"
+  ]},
+  self: { name:"Self-employed / Business owner", docs:[
+    "Business registration proof (GST certificate / Udyam / Shop Act / partnership deed)",
+    "Business current account statements, last 6 months",
+    "Business ITRs with computation, last 3 years",
+    "Cover letter on business letterhead",
+    "Visiting card and company profile (optional, helpful)"
+  ]},
+  student: { name:"Student", docs:[
+    "Student ID card copy",
+    "Bonafide / leave letter from school or college",
+    "Sponsorship letter from parent(s)",
+    "Parents' bank statements (6 months) and ITRs (3 years)",
+    "Birth certificate (to prove relationship with sponsor)",
+    "Consent letter from both parents if applicant is a minor"
+  ]},
+  retired: { name:"Retired", docs:[
+    "Retirement proof / Pension Payment Order (PPO)",
+    "Pension account statements, last 6 months",
+    "Investment proofs (FDs, mutual funds, property)",
+    "Sponsorship letter and sponsor's financials (if a child is sponsoring)"
+  ]}
+};
+
+function fill(id, obj) {
+  var sel = document.getElementById(id);
+  for (var k in obj) {
+    var o = document.createElement("option");
+    o.value = k; o.textContent = obj[k].name;
+    sel.appendChild(o);
+  }
+}
+fill("country", COUNTRIES);
+fill("profile", PROFILES);
+
+var current = [];
+
+function section(title, items) {
+  var html = "<h3>" + title + "</h3><ul>";
+  items.forEach(function (t) {
+    html += "<li><label><input type='checkbox'> " + t + "</label></li>";
+  });
+  return html + "</ul>";
+}
+
+function generate() {
+  var c = COUNTRIES[document.getElementById("country").value];
+  var p = PROFILES[document.getElementById("profile").value];
+  current = [
+    ["Basic documents", COMMON],
+    [c.name + " specific", c.docs],
+    [p.name + " documents", p.docs]
+  ];
+  document.getElementById("title").textContent = c.name + " - " + p.name;
+  document.getElementById("subtitle").textContent = c.visa;
+  document.getElementById("lists").innerHTML = current.map(function (s) { return section(s[0], s[1]); }).join("");
+  document.getElementById("result").style.display = "block";
+  document.getElementById("result").scrollIntoView({ behavior: "smooth" });
+}
+
+function copyText() {
+  var t = "*" + document.getElementById("title").textContent + " visa checklist*\n";
+  current.forEach(function (s) {
+    t += "\n*" + s[0] + "*\n";
+    s[1].forEach(function (d, i) { t += (i + 1) + ". " + d + "\n"; });
+  });
+  t += "\nPrepared by SpherePass";
+  navigator.clipboard.writeText(t).then(function () { alert("Checklist copied. Paste it in WhatsApp."); });
+}
+</script>
+</body>
+</html>
